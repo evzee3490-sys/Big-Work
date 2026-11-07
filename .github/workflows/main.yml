@@ -1,12 +1,19 @@
-name: Temporary Windows RDP
+name: Temporary Windows RDP (10 Runners)
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp:
+    name: RDP ${{ matrix.rdp }}
     runs-on: windows-2025
     timeout-minutes: 360
+
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        rdp: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
     steps:
       - name: Enable RDP
@@ -16,6 +23,7 @@ jobs:
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
           Set-Service -Name TermService -StartupType Automatic
           Start-Service -Name TermService
+
       - name: Create RDP Admin User
         shell: powershell
         env:
@@ -24,13 +32,17 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:RDP_PASSWORD)) {
             throw "RDP_PASSWORD secret is missing."
           }
+
           $Password = ConvertTo-SecureString $env:RDP_PASSWORD -AsPlainText -Force
+
           if (Get-LocalUser -Name "rdpuser" -ErrorAction SilentlyContinue) {
             Remove-LocalUser -Name "rdpuser"
           }
+
           New-LocalUser -Name "rdpuser" -Password $Password -PasswordNeverExpires -AccountNeverExpires -Description "Temporary RDP administrator"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "rdpuser"
           Add-LocalGroupMember -Group "Administrators" -Member "rdpuser"
+
       - name: Connect Tailscale
         uses: tailscale/github-action@v4
         with:
@@ -41,17 +53,19 @@ jobs:
         run: |
           $ip = (tailscale ip -4).Trim()
           Write-Host "=========================================="
-          Write-Host "       TEMPORARY RDP READY"
+          Write-Host "       TEMPORARY RDP ${{ matrix.rdp }} READY"
           Write-Host "=========================================="
+          Write-Host "RDP Number   : ${{ matrix.rdp }}"
           Write-Host "Tailscale IP : $ip"
           Write-Host "RDP Username : rdpuser"
           Write-Host "RDP Port     : 3389"
-          Write-Host "Administrator: YES"
+          Write-Host "Password     : Use the RDP_PASSWORD GitHub Secret"
           Write-Host "=========================================="
+
       - name: Keep RDP Alive
         shell: powershell
         run: |
-          Write-Host "RDP is running. Leave this workflow running."
+          Write-Host "RDP ${{ matrix.rdp }} is running. Leave this workflow job running."
           while ($true) {
             Start-Sleep -Seconds 60
           }
